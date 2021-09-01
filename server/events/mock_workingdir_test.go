@@ -69,18 +69,7 @@ func (mock *MockWorkingDir) GetWorkingDir(r models.Repo, p models.PullRequest, w
 }
 
 func (mock *MockWorkingDir) HasDiverged(log logging.SimpleLogging, cloneDir string) bool {
-	if mock == nil {
-		panic("mock must not be nil. Use myMock := NewMockWorkingDir().")
-	}
-	params := []pegomock.Param{log, cloneDir}
-	result := pegomock.GetGenericMockFrom(mock).Invoke("HasDiverged", params, []reflect.Type{reflect.TypeOf((*bool)(nil)).Elem()})
-	var ret0 bool
-	if len(result) != 0 {
-		if result[0] != nil {
-			ret0 = result[0].(bool)
-		}
-	}
-	return ret0
+	return false
 }
 
 func (mock *MockWorkingDir) GetPullDir(r models.Repo, p models.PullRequest) (string, error) {

@@ -215,9 +215,15 @@ func (p *DefaultProjectCommandBuilder) buildPlanAllCommands(ctx *CommandContext,
 		ctx.Log.Warn("workspace was locked")
 		return nil, err
 	}
-	ctx.Log.Debug("got workspace lock")
+	ctx.Log.Debug("got workspace lock for %s workspace on %s project", workspace, projectName)
 	defer unlockFn()
 	var projCtxs []models.ProjectCommandContext
+	if len(matchingProjects) == 0 {
+		matchingProjects = append(matchingProjects, valid.Project{
+			Workspace: workspace,
+			Name:      &projectName,
+		})
+	}
 	for _, mp := range matchingProjects {
 		projectName = mp.GetName()
 		repoDir, _, err := p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, workspace, projectName)
