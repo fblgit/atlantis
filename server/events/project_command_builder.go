@@ -19,6 +19,9 @@ const (
 	// DefaultWorkspace is the default Terraform workspace we run commands in.
 	// This is also Terraform's default workspace.
 	DefaultWorkspace = "default"
+	// DefaultProjectName is the default Project used by Atlantis on the first clone
+	// before parse atlantis.yaml file
+	DefaultProjectName = ""
 	// DefaultAutomergeEnabled is the default for the automerge setting.
 	DefaultAutomergeEnabled = false
 	// DefaultParallelApplyEnabled is the default for the parallel apply setting.
@@ -175,7 +178,7 @@ func (p *DefaultProjectCommandBuilder) buildPlanAllCommands(ctx *CommandContext,
 		return nil, err
 	}
 	ctx.Log.Debug("%d files were modified in this pull request", len(modifiedFiles))
-
+	matchingProjects := []valid.Project{}
 	if p.SkipCloneNoChanges && p.VCSClient.SupportsSingleFileDownload(ctx.Pull.BaseRepo) {
 		hasRepoCfg, repoCfgData, err := p.VCSClient.DownloadRepoConfigFile(ctx.Pull)
 		if err != nil {
@@ -188,7 +191,7 @@ func (p *DefaultProjectCommandBuilder) buildPlanAllCommands(ctx *CommandContext,
 				return nil, errors.Wrapf(err, "parsing %s", yaml.AtlantisYAMLFilename)
 			}
 			ctx.Log.Info("successfully parsed remote %s file", yaml.AtlantisYAMLFilename)
-			matchingProjects, err := p.ProjectFinder.DetermineProjectsViaConfig(ctx.Log, modifiedFiles, repoCfg, "")
+			matchingProjects, err = p.ProjectFinder.DetermineProjectsViaConfig(ctx.Log, modifiedFiles, repoCfg, "")
 			if err != nil {
 				return nil, err
 			}
@@ -205,89 +208,99 @@ func (p *DefaultProjectCommandBuilder) buildPlanAllCommands(ctx *CommandContext,
 
 	// Need to lock the workspace we're about to clone to.
 	workspace := DefaultWorkspace
+	projectName := DefaultProjectName
 
-	unlockFn, err := p.WorkingDirLocker.TryLock(ctx.Pull.BaseRepo.FullName, ctx.Pull.Num, workspace)
+	unlockFn, err := p.WorkingDirLocker.TryLock(ctx.Pull.BaseRepo.FullName, ctx.Pull.Num, workspace, projectName)
 	if err != nil {
 		ctx.Log.Warn("workspace was locked")
 		return nil, err
 	}
 	ctx.Log.Debug("got workspace lock")
 	defer unlockFn()
-
-	repoDir, _, err := p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, workspace)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse config file if it exists.
-	hasRepoCfg, err := p.ParserValidator.HasRepoCfg(repoDir)
-	if err != nil {
-		return nil, errors.Wrapf(err, "looking for %s file in %q", yaml.AtlantisYAMLFilename, repoDir)
-	}
-
 	var projCtxs []models.ProjectCommandContext
-
-	if hasRepoCfg {
-		// If there's a repo cfg then we'll use it to figure out which projects
-		// should be planed.
-		repoCfg, err := p.ParserValidator.ParseRepoCfg(repoDir, p.GlobalCfg, ctx.Pull.BaseRepo.ID())
-		if err != nil {
-			return nil, errors.Wrapf(err, "parsing %s", yaml.AtlantisYAMLFilename)
-		}
-		ctx.Log.Info("successfully parsed %s file", yaml.AtlantisYAMLFilename)
-		matchingProjects, err := p.ProjectFinder.DetermineProjectsViaConfig(ctx.Log, modifiedFiles, repoCfg, repoDir)
+	for _, mp := range matchingProjects {
+		projectName = mp.GetName()
+		repoDir, _, err := p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, workspace, projectName)
 		if err != nil {
 			return nil, err
 		}
-		ctx.Log.Info("%d projects are to be planned based on their when_modified config", len(matchingProjects))
 
-		for _, mp := range matchingProjects {
-			ctx.Log.Debug("determining config for project at dir: %q workspace: %q", mp.Dir, mp.Workspace)
-			mergedCfg := p.GlobalCfg.MergeProjectCfg(ctx.Log, ctx.Pull.BaseRepo.ID(), mp, repoCfg)
-
-			projCtxs = append(projCtxs,
-				p.ProjectCommandContextBuilder.BuildProjectContext(
-					ctx,
-					models.PlanCommand,
-					mergedCfg,
-					commentFlags,
-					repoDir,
-					repoCfg.Automerge,
-					mergedCfg.DeleteSourceBranchOnMerge,
-					repoCfg.ParallelApply,
-					repoCfg.ParallelPlan,
-					verbose,
-				)...)
-		}
-	} else {
-		// If there is no config file, then we'll plan each project that
-		// our algorithm determines was modified.
-		ctx.Log.Info("found no %s file", yaml.AtlantisYAMLFilename)
-		modifiedProjects := p.ProjectFinder.DetermineProjects(ctx.Log, modifiedFiles, ctx.Pull.BaseRepo.FullName, repoDir, p.AutoplanFileList)
+		// Parse config file if it exists.
+		hasRepoCfg, err := p.ParserValidator.HasRepoCfg(repoDir)
 		if err != nil {
-			return nil, errors.Wrapf(err, "finding modified projects: %s", modifiedFiles)
+			return nil, errors.Wrapf(err, "looking for %s file in %q", yaml.AtlantisYAMLFilename, repoDir)
 		}
-		ctx.Log.Info("automatically determined that there were %d projects modified in this pull request: %s", len(modifiedProjects), modifiedProjects)
-		for _, mp := range modifiedProjects {
-			ctx.Log.Debug("determining config for project at dir: %q", mp.Path)
-			pCfg := p.GlobalCfg.DefaultProjCfg(ctx.Log, ctx.Pull.BaseRepo.ID(), mp.Path, DefaultWorkspace)
 
-			projCtxs = append(projCtxs,
-				p.ProjectCommandContextBuilder.BuildProjectContext(
-					ctx,
-					models.PlanCommand,
-					pCfg,
-					commentFlags,
-					repoDir,
-					DefaultAutomergeEnabled,
-					pCfg.DeleteSourceBranchOnMerge,
-					DefaultParallelApplyEnabled,
-					DefaultParallelPlanEnabled,
-					verbose,
-				)...)
+		if hasRepoCfg {
+			// If there's a repo cfg then we'll use it to figure out which projects
+			// should be planed.
+			repoCfg, err := p.ParserValidator.ParseRepoCfg(repoDir, p.GlobalCfg, ctx.Pull.BaseRepo.ID())
+			if err != nil {
+				return nil, errors.Wrapf(err, "parsing %s", yaml.AtlantisYAMLFilename)
+			}
+			ctx.Log.Info("successfully parsed %s file", yaml.AtlantisYAMLFilename)
+			matchingProjects, err := p.ProjectFinder.DetermineProjectsViaConfig(ctx.Log, modifiedFiles, repoCfg, repoDir)
+			if err != nil {
+				return nil, err
+			}
+			ctx.Log.Info("%d projects are to be planned based on their when_modified config", len(matchingProjects))
+
+			for _, mp := range matchingProjects {
+				ctx.Log.Debug("determining config for project at dir: %q workspace: %q", mp.Dir, mp.Workspace)
+				mergedCfg := p.GlobalCfg.MergeProjectCfg(ctx.Log, ctx.Pull.BaseRepo.ID(), mp, repoCfg)
+				projectName = mp.GetName()
+				repoDir, _, err := p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, workspace, projectName)
+				if err != nil {
+					continue
+				}
+
+				projCtxs = append(projCtxs,
+					p.ProjectCommandContextBuilder.BuildProjectContext(
+						ctx,
+						models.PlanCommand,
+						mergedCfg,
+						commentFlags,
+						repoDir,
+						repoCfg.Automerge,
+						mergedCfg.DeleteSourceBranchOnMerge,
+						repoCfg.ParallelApply,
+						repoCfg.ParallelPlan,
+						verbose,
+					)...)
+			}
+		} else {
+			// If there is no config file, then we'll plan each project that
+			// our algorithm determines was modified.
+			ctx.Log.Info("found no %s file", yaml.AtlantisYAMLFilename)
+			modifiedProjects := p.ProjectFinder.DetermineProjects(ctx.Log, modifiedFiles, ctx.Pull.BaseRepo.FullName, repoDir, p.AutoplanFileList)
+			if err != nil {
+				return nil, errors.Wrapf(err, "finding modified projects: %s", modifiedFiles)
+			}
+			ctx.Log.Info("automatically determined that there were %d projects modified in this pull request: %s", len(modifiedProjects), modifiedProjects)
+			for _, mp := range modifiedProjects {
+				projectName = mp.ProjectName
+				ctx.Log.Debug("determining config for project at dir: %q", mp.Path)
+				pCfg := p.GlobalCfg.DefaultProjCfg(ctx.Log, ctx.Pull.BaseRepo.ID(), mp.Path, DefaultWorkspace)
+				repoDir, _, err := p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, workspace, projectName)
+				if err != nil {
+					continue
+				}
+				projCtxs = append(projCtxs,
+					p.ProjectCommandContextBuilder.BuildProjectContext(
+						ctx,
+						models.PlanCommand,
+						pCfg,
+						commentFlags,
+						repoDir,
+						DefaultAutomergeEnabled,
+						pCfg.DeleteSourceBranchOnMerge,
+						DefaultParallelApplyEnabled,
+						DefaultParallelPlanEnabled,
+						verbose,
+					)...)
+			}
 		}
 	}
-
 	return projCtxs, nil
 }
 
@@ -295,20 +308,25 @@ func (p *DefaultProjectCommandBuilder) buildPlanAllCommands(ctx *CommandContext,
 // cmd must be for only one project.
 func (p *DefaultProjectCommandBuilder) buildProjectPlanCommand(ctx *CommandContext, cmd *CommentCommand) ([]models.ProjectCommandContext, error) {
 	workspace := DefaultWorkspace
+	projectName := DefaultProjectName
 	if cmd.Workspace != "" {
 		workspace = cmd.Workspace
+	}
+	if cmd.ProjectName != "" {
+		projectName = cmd.ProjectName
 	}
 
 	var pcc []models.ProjectCommandContext
 	ctx.Log.Debug("building plan command")
-	unlockFn, err := p.WorkingDirLocker.TryLock(ctx.Pull.BaseRepo.FullName, ctx.Pull.Num, workspace)
+	unlockFn, err := p.WorkingDirLocker.TryLock(ctx.Pull.BaseRepo.FullName, ctx.Pull.Num, workspace, projectName)
 	if err != nil {
 		return pcc, err
 	}
 	defer unlockFn()
 
 	ctx.Log.Debug("cloning repository")
-	_, _, err = p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, workspace)
+
+	_, _, err = p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, workspace, projectName)
 	if err != nil {
 		return pcc, err
 	}
@@ -320,7 +338,7 @@ func (p *DefaultProjectCommandBuilder) buildProjectPlanCommand(ctx *CommandConte
 
 	// use the default repository workspace because it is the only one guaranteed to have an atlantis.yaml,
 	// other workspaces will not have the file if they are using pre_workflow_hooks to generate it dynamically
-	defaultRepoDir, err := p.WorkingDir.GetWorkingDir(ctx.Pull.BaseRepo, ctx.Pull, DefaultWorkspace)
+	defaultRepoDir, err := p.WorkingDir.GetWorkingDir(ctx.Pull.BaseRepo, ctx.Pull, DefaultWorkspace, projectName)
 	if err != nil {
 		return pcc, err
 	}
@@ -328,7 +346,7 @@ func (p *DefaultProjectCommandBuilder) buildProjectPlanCommand(ctx *CommandConte
 	return p.buildProjectCommandCtx(
 		ctx,
 		models.PlanCommand,
-		cmd.ProjectName,
+		projectName,
 		cmd.Flags,
 		defaultRepoDir,
 		repoRelDir,
@@ -412,7 +430,7 @@ func (p *DefaultProjectCommandBuilder) buildAllProjectCommands(ctx *CommandConte
 
 	// use the default repository workspace because it is the only one guaranteed to have an atlantis.yaml,
 	// other workspaces will not have the file if they are using pre_workflow_hooks to generate it dynamically
-	defaultRepoDir, err := p.WorkingDir.GetWorkingDir(ctx.Pull.BaseRepo, ctx.Pull, DefaultWorkspace)
+	defaultRepoDir, err := p.WorkingDir.GetWorkingDir(ctx.Pull.BaseRepo, ctx.Pull, DefaultWorkspace, DefaultProjectName)
 	if err != nil {
 		return nil, err
 	}
@@ -432,12 +450,16 @@ func (p *DefaultProjectCommandBuilder) buildAllProjectCommands(ctx *CommandConte
 // identified by cmd.
 func (p *DefaultProjectCommandBuilder) buildProjectApplyCommand(ctx *CommandContext, cmd *CommentCommand) ([]models.ProjectCommandContext, error) {
 	workspace := DefaultWorkspace
+	projectName := DefaultProjectName
 	if cmd.Workspace != "" {
 		workspace = cmd.Workspace
 	}
+	if cmd.ProjectName != "" {
+		projectName = cmd.ProjectName
+	}
 
 	var projCtx []models.ProjectCommandContext
-	unlockFn, err := p.WorkingDirLocker.TryLock(ctx.Pull.BaseRepo.FullName, ctx.Pull.Num, workspace)
+	unlockFn, err := p.WorkingDirLocker.TryLock(ctx.Pull.BaseRepo.FullName, ctx.Pull.Num, workspace, projectName)
 	if err != nil {
 		return projCtx, err
 	}
@@ -445,7 +467,7 @@ func (p *DefaultProjectCommandBuilder) buildProjectApplyCommand(ctx *CommandCont
 
 	// use the default repository workspace because it is the only one guaranteed to have an atlantis.yaml,
 	// other workspaces will not have the file if they are using pre_workflow_hooks to generate it dynamically
-	repoDir, err := p.WorkingDir.GetWorkingDir(ctx.Pull.BaseRepo, ctx.Pull, DefaultWorkspace)
+	repoDir, err := p.WorkingDir.GetWorkingDir(ctx.Pull.BaseRepo, ctx.Pull, DefaultWorkspace, projectName)
 	if os.IsNotExist(errors.Cause(err)) {
 		return projCtx, errors.New("no working directory found–did you run plan?")
 	} else if err != nil {
@@ -460,7 +482,7 @@ func (p *DefaultProjectCommandBuilder) buildProjectApplyCommand(ctx *CommandCont
 	return p.buildProjectCommandCtx(
 		ctx,
 		models.ApplyCommand,
-		cmd.ProjectName,
+		projectName,
 		cmd.Flags,
 		repoDir,
 		repoRelDir,
@@ -473,12 +495,16 @@ func (p *DefaultProjectCommandBuilder) buildProjectApplyCommand(ctx *CommandCont
 // identified by cmd.
 func (p *DefaultProjectCommandBuilder) buildProjectVersionCommand(ctx *CommandContext, cmd *CommentCommand) ([]models.ProjectCommandContext, error) {
 	workspace := DefaultWorkspace
+	projectName := DefaultProjectName
 	if cmd.Workspace != "" {
 		workspace = cmd.Workspace
 	}
+	if cmd.ProjectName != "" {
+		projectName = cmd.ProjectName
+	}
 
 	var projCtx []models.ProjectCommandContext
-	unlockFn, err := p.WorkingDirLocker.TryLock(ctx.Pull.BaseRepo.FullName, ctx.Pull.Num, workspace)
+	unlockFn, err := p.WorkingDirLocker.TryLock(ctx.Pull.BaseRepo.FullName, ctx.Pull.Num, workspace, projectName)
 	if err != nil {
 		return projCtx, err
 	}
@@ -486,7 +512,7 @@ func (p *DefaultProjectCommandBuilder) buildProjectVersionCommand(ctx *CommandCo
 
 	// use the default repository workspace because it is the only one guaranteed to have an atlantis.yaml,
 	// other workspaces will not have the file if they are using pre_workflow_hooks to generate it dynamically
-	repoDir, err := p.WorkingDir.GetWorkingDir(ctx.Pull.BaseRepo, ctx.Pull, DefaultWorkspace)
+	repoDir, err := p.WorkingDir.GetWorkingDir(ctx.Pull.BaseRepo, ctx.Pull, DefaultWorkspace, projectName)
 	if os.IsNotExist(errors.Cause(err)) {
 		return projCtx, errors.New("no working directory found–did you run plan?")
 	} else if err != nil {

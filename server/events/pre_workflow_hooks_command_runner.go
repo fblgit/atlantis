@@ -46,14 +46,14 @@ func (w *DefaultPreWorkflowHooksCommandRunner) RunPreHooks(
 
 	log.Debug("pre-hooks configured, running...")
 
-	unlockFn, err := w.WorkingDirLocker.TryLock(baseRepo.FullName, pull.Num, DefaultWorkspace)
+	unlockFn, err := w.WorkingDirLocker.TryLock(baseRepo.FullName, pull.Num, DefaultWorkspace, DefaultProjectName)
 	if err != nil {
 		return err
 	}
 	log.Debug("got workspace lock")
 	defer unlockFn()
 
-	repoDir, _, err := w.WorkingDir.Clone(log, headRepo, pull, DefaultWorkspace)
+	repoDir, _, err := w.WorkingDir.Clone(log, headRepo, pull, DefaultWorkspace, DefaultProjectName)
 	if err != nil {
 		return err
 	}

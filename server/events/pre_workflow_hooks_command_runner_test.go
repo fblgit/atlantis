@@ -92,8 +92,8 @@ func TestRunPreHooks_Clone(t *testing.T) {
 
 		wh.GlobalCfg = globalCfg
 
-		When(whWorkingDirLocker.TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace)).ThenReturn(unlockFn, nil)
-		When(whWorkingDir.Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace)).ThenReturn(repoDir, false, nil)
+		When(whWorkingDirLocker.TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace, events.DefaultProjectName)).ThenReturn(unlockFn, nil)
+		When(whWorkingDir.Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace, events.DefaultProjectName)).ThenReturn(repoDir, false, nil)
 		When(whPreWorkflowHookRunner.Run(pCtx, testHook.RunCommand, repoDir)).ThenReturn(result, nil)
 
 		err := wh.RunPreHooks(ctx)
@@ -128,8 +128,8 @@ func TestRunPreHooks_Clone(t *testing.T) {
 		Ok(t, err)
 
 		whPreWorkflowHookRunner.VerifyWasCalled(Never()).Run(pCtx, testHook.RunCommand, repoDir)
-		whWorkingDirLocker.VerifyWasCalled(Never()).TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace)
-		whWorkingDir.VerifyWasCalled(Never()).Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace)
+		whWorkingDirLocker.VerifyWasCalled(Never()).TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace, events.DefaultProjectName)
+		whWorkingDir.VerifyWasCalled(Never()).Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace, events.DefaultProjectName)
 	})
 	t.Run("error locking work dir", func(t *testing.T) {
 		preWorkflowHooksSetup(t)
@@ -147,12 +147,12 @@ func TestRunPreHooks_Clone(t *testing.T) {
 
 		wh.GlobalCfg = globalCfg
 
-		When(whWorkingDirLocker.TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace)).ThenReturn(func() {}, errors.New("some error"))
+		When(whWorkingDirLocker.TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace, events.DefaultProjectName)).ThenReturn(func() {}, errors.New("some error"))
 
 		err := wh.RunPreHooks(ctx)
 
 		Assert(t, err != nil, "error not nil")
-		whWorkingDir.VerifyWasCalled(Never()).Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace)
+		whWorkingDir.VerifyWasCalled(Never()).Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace, events.DefaultProjectName)
 		whPreWorkflowHookRunner.VerifyWasCalled(Never()).Run(pCtx, testHook.RunCommand, repoDir)
 	})
 
@@ -177,8 +177,8 @@ func TestRunPreHooks_Clone(t *testing.T) {
 
 		wh.GlobalCfg = globalCfg
 
-		When(whWorkingDirLocker.TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace)).ThenReturn(unlockFn, nil)
-		When(whWorkingDir.Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace)).ThenReturn(repoDir, false, errors.New("some error"))
+		When(whWorkingDirLocker.TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace, events.DefaultProjectName)).ThenReturn(unlockFn, nil)
+		When(whWorkingDir.Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace, events.DefaultProjectName)).ThenReturn(repoDir, false, errors.New("some error"))
 
 		err := wh.RunPreHooks(ctx)
 
@@ -209,8 +209,8 @@ func TestRunPreHooks_Clone(t *testing.T) {
 
 		wh.GlobalCfg = globalCfg
 
-		When(whWorkingDirLocker.TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace)).ThenReturn(unlockFn, nil)
-		When(whWorkingDir.Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace)).ThenReturn(repoDir, false, nil)
+		When(whWorkingDirLocker.TryLock(fixtures.GithubRepo.FullName, newPull.Num, events.DefaultWorkspace, events.DefaultProjectName)).ThenReturn(unlockFn, nil)
+		When(whWorkingDir.Clone(log, fixtures.GithubRepo, newPull, events.DefaultWorkspace, events.DefaultProjectName)).ThenReturn(repoDir, false, nil)
 		When(whPreWorkflowHookRunner.Run(pCtx, testHook.RunCommand, repoDir)).ThenReturn(result, errors.New("some error"))
 
 		err := wh.RunPreHooks(ctx)

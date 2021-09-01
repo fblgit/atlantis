@@ -64,6 +64,7 @@ func TestDefaultProjectCommandRunner_Plan(t *testing.T) {
 		matchers.AnyModelsRepo(),
 		matchers.AnyModelsPullRequest(),
 		AnyString(),
+		AnyString(),
 	)).ThenReturn(repoDir, false, nil)
 	When(mockLocker.TryLock(
 		matchers.AnyPtrToLoggingSimpleLogger(),
@@ -137,7 +138,7 @@ func TestDefaultProjectCommandRunner_ApplyNotCloned(t *testing.T) {
 		WorkingDir: mockWorkingDir,
 	}
 	ctx := models.ProjectCommandContext{}
-	When(mockWorkingDir.GetWorkingDir(ctx.BaseRepo, ctx.Pull, ctx.Workspace)).ThenReturn("", os.ErrNotExist)
+	When(mockWorkingDir.GetWorkingDir(ctx.BaseRepo, ctx.Pull, ctx.Workspace, ctx.ProjectName)).ThenReturn("", os.ErrNotExist)
 
 	res := runner.Apply(ctx)
 	ErrEquals(t, "project has not been cloned–did you run plan?", res.Error)
@@ -161,7 +162,7 @@ func TestDefaultProjectCommandRunner_ApplyNotApproved(t *testing.T) {
 	}
 	tmp, cleanup := TempDir(t)
 	defer cleanup()
-	When(mockWorkingDir.GetWorkingDir(ctx.BaseRepo, ctx.Pull, ctx.Workspace)).ThenReturn(tmp, nil)
+	When(mockWorkingDir.GetWorkingDir(ctx.BaseRepo, ctx.Pull, ctx.Workspace, ctx.ProjectName)).ThenReturn(tmp, nil)
 	When(mockApproved.PullIsApproved(ctx.BaseRepo, ctx.Pull)).ThenReturn(false, nil)
 
 	res := runner.Apply(ctx)
@@ -185,7 +186,7 @@ func TestDefaultProjectCommandRunner_ApplyNotMergeable(t *testing.T) {
 	}
 	tmp, cleanup := TempDir(t)
 	defer cleanup()
-	When(mockWorkingDir.GetWorkingDir(ctx.BaseRepo, ctx.Pull, ctx.Workspace)).ThenReturn(tmp, nil)
+	When(mockWorkingDir.GetWorkingDir(ctx.BaseRepo, ctx.Pull, ctx.Workspace, ctx.ProjectName)).ThenReturn(tmp, nil)
 
 	res := runner.Apply(ctx)
 	Equals(t, "Pull request must be mergeable before running apply.", res.Failure)
@@ -204,10 +205,11 @@ func TestDefaultProjectCommandRunner_ApplyDiverged(t *testing.T) {
 	}
 	ctx := models.ProjectCommandContext{
 		ApplyRequirements: []string{"undiverged"},
+		ProjectName:       events.DefaultProjectName,
 	}
 	tmp, cleanup := TempDir(t)
 	defer cleanup()
-	When(mockWorkingDir.GetWorkingDir(ctx.BaseRepo, ctx.Pull, ctx.Workspace)).ThenReturn(tmp, nil)
+	When(mockWorkingDir.GetWorkingDir(ctx.BaseRepo, ctx.Pull, ctx.Workspace, ctx.ProjectName)).ThenReturn(tmp, nil)
 
 	res := runner.Apply(ctx)
 	Equals(t, "Default branch must be rebased onto pull request before running apply.", res.Failure)
@@ -328,12 +330,14 @@ func TestDefaultProjectCommandRunner_Apply(t *testing.T) {
 				matchers.AnyModelsRepo(),
 				matchers.AnyModelsPullRequest(),
 				AnyString(),
+				AnyString(),
 			)).ThenReturn(repoDir, nil)
 
 			ctx := models.ProjectCommandContext{
 				Log:               logging.NewNoopLogger(t),
 				Steps:             c.steps,
 				Workspace:         "default",
+				ProjectName:       "default",
 				ApplyRequirements: c.applyReqs,
 				RepoRelDir:        ".",
 				PullMergeable:     c.pullMergeable,
@@ -405,6 +409,7 @@ func TestDefaultProjectCommandRunner_RunEnvSteps(t *testing.T) {
 		matchers.AnyPtrToLoggingSimpleLogger(),
 		matchers.AnyModelsRepo(),
 		matchers.AnyModelsPullRequest(),
+		AnyString(),
 		AnyString(),
 	)).ThenReturn(repoDir, false, nil)
 	When(mockLocker.TryLock(

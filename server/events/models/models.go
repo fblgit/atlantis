@@ -258,6 +258,8 @@ type ProjectLock struct {
 type Project struct {
 	// RepoFullName is the owner and repo name, ex. "runatlantis/atlantis"
 	RepoFullName string
+	// ProjectName is the name of the project for the context
+	ProjectName string
 	// Path to project root in the repo.
 	// If "." then project is at root.
 	// Never ends in "/".

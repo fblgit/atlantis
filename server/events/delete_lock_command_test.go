@@ -70,6 +70,7 @@ func TestDeleteLock_Success(t *testing.T) {
 		Project: models.Project{
 			Path:         "path",
 			RepoFullName: "owner/repo",
+			ProjectName:  "projectName",
 		},
 	}, nil)
 	tmp, cleanup := TempDir(t)
@@ -86,7 +87,7 @@ func TestDeleteLock_Success(t *testing.T) {
 	lock, err := dlc.DeleteLock("id")
 	Ok(t, err)
 	Assert(t, lock != nil, "lock was nil")
-	workingDir.VerifyWasCalledOnce().DeleteForWorkspace(pull.BaseRepo, pull, "workspace")
+	workingDir.VerifyWasCalledOnce().DeleteForWorkspace(pull.BaseRepo, pull, "workspace", "projectName")
 }
 
 func TestDeleteLocksByPull_LockerErr(t *testing.T) {
