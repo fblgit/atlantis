@@ -82,7 +82,7 @@ workflows:
 		},
 
 		// Test that if we've set global defaults, that they are used but the
-		// allowed project config values also come through.
+		// allowed project config values also come through including projectName.
 		"global defaults with repo cfg": {
 			globalCfg: `
 repos:
@@ -101,7 +101,8 @@ workflows:
 version: 3
 automerge: true
 projects:
-- dir: project1
+- name: myProject
+  dir: project1
   workspace: myworkspace
   autoplan:
     enabled: true
@@ -109,7 +110,7 @@ projects:
   terraform_version: v10.0
   `,
 			expCtx: models.ProjectCommandContext{
-				ApplyCmd:           "atlantis apply -d project1 -w myworkspace",
+				ApplyCmd:           "atlantis apply -p myProject",
 				BaseRepo:           baseRepo,
 				EscapedCommentArgs: []string{`\f\l\a\g`},
 				AutomergeEnabled:   true,
@@ -118,10 +119,10 @@ projects:
 				Log:                logger,
 				PullMergeable:      true,
 				Pull:               pull,
-				ProjectName:        "",
+				ProjectName:        "myProject",
 				ApplyRequirements:  []string{},
 				RepoConfigVersion:  3,
-				RePlanCmd:          "atlantis plan -d project1 -w myworkspace -- flag",
+				RePlanCmd:          "atlantis plan -p myProject -- flag",
 				RepoRelDir:         "project1",
 				TerraformVersion:   mustVersion("10.0"),
 				User:               models.User{},
